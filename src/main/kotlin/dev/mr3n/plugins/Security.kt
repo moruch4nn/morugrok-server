@@ -2,7 +2,6 @@ package dev.mr3n.plugins
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
-import dev.mr3n.Daemon
 import dev.mr3n.Data
 import dev.mr3n.model.ConnectionRequest
 import dev.mr3n.model.Protocol.*
@@ -64,8 +63,9 @@ fun Application.configureSecurity() {
                     if(Data.USING_PORT.contains(body.port)) {
                         call.respond(HttpStatusCode.Conflict,"ポートが重複しているためコネクションを作成できませんでした。")
                     } else {
-                        val daemon = Daemon(principal.name, if(principal.hasPerm("port.select")){body.port?:throw BadRequestException("")}else{subPort},body.protocol,body.filter,principal.perm)
-                        call.respond(HttpStatusCode.OK, daemon.toConnectionInfo())
+                        val waitConn = body.copy(user = principal.name, port = if(principal.hasPerm("port.select")){body.port?:throw BadRequestException("")}else{subPort})
+                        Data.WAIT_CONNECTIONS[principal.name] = (Data.WAIT_CONNECTIONS[principal.name]?:mutableMapOf()).apply { put(waitConn.token,waitConn) }
+                        call.respond(HttpStatusCode.OK, waitConn)
                     }
                 }
                 get {

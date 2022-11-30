@@ -1,5 +1,7 @@
 package dev.mr3n
 
+import dev.mr3n.model.ConnectionRequest
+
 object Data {
     // >>> 使用可能なポート範囲 >>>
     const val PORT_START = 10000
@@ -10,7 +12,9 @@ object Data {
     val USING_PORT: List<Int>
         get() = CONNECTIONS.values.map { it.values }.flatten().map { listOf(it.port, it.tunnelingServer.port) }.flatten()
 
-    val CONNECTIONS = mutableMapOf<String, MutableMap<String, Daemon>>()
+    val WAIT_CONNECTIONS = mutableMapOf<String, MutableMap<String, ConnectionRequest>>()
+
+    val CONNECTIONS = mutableMapOf<String, MutableMap<String, TCPConnection>>()
 
     const val DEFAULT_BUFFER_SIZE = 30000
 }
