@@ -11,6 +11,7 @@ import io.ktor.network.sockets.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.engine.internal.*
 import io.ktor.utils.io.*
+import io.ktor.server.websocket.*
 import io.ktor.websocket.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -20,7 +21,14 @@ import java.io.Closeable
 import java.net.InetSocketAddress
 import java.net.SocketException
 
-class TCPConnection(val user: String, var port: Int, val protocol: Protocol, filter: Filter, private val token: String, private val webSocketSession: WebSocketSession): Closeable, Thread() {
+class TCPConnection(
+    val user: String,
+    var port: Int,
+    val protocol: Protocol,
+    filter: Filter,
+    private val token: String,
+    private val webSocketSession: WebSocketSession
+) : Closeable, Thread() {
     private val selectorManager = SelectorManager(Dispatchers.IO)
 
     private val serverSocket = aSocket(selectorManager).tcp().bind("0.0.0.0", port)
@@ -31,11 +39,13 @@ class TCPConnection(val user: String, var port: Int, val protocol: Protocol, fil
     var filter: Filter = filter
         set(value) {
             connections.forEach { (address, sockets) ->
-                val block = when(value.type) {
+                val block = when (value.type) {
                     Filter.Type.BLACKLIST -> value.list.contains(address)
                     Filter.Type.WHITELIST -> !value.list.contains(address)
                 }
-                if(block) { sockets.forEach { it.close() } }
+                if (block) {
+                    sockets.forEach { it.close() }
+                }
             }
             field = value
         }
@@ -44,27 +54,45 @@ class TCPConnection(val user: String, var port: Int, val protocol: Protocol, fil
     override fun run() {
         runBlocking {
             try {
-                while(true) {
+                while (true) {
                     val socket = serverSocket.accept()
                     val address = (socket.remoteAddress.toJavaAddress() as InetSocketAddress).hostString
-                    val block = when(filter.type) {
+                    val block = when (filter.type) {
                         Filter.Type.BLACKLIST -> filter.list.contains(address)
                         Filter.Type.WHITELIST -> !filter.list.contains(address)
                     }
-                    if(block) {
+                    if (block) {
                         withContext(Dispatchers.IO) { socket.close() }
                     } else {
-                        val json = DefaultJson.encodeToString(WebSocketPacket(PacketType.CREATE_TUNNEL, CreateTunnelRequest(tunnelingServer.port, Protocol.TCP, address, System.currentTimeMillis())))
+                        val json = DefaultJson.encodeToString(
+                            WebSocketPacket(
+                                PacketType.CREATE_TUNNEL,
+                                CreateTunnelRequest(
+                                    tunnelingServer.port,
+                                    Protocol.TCP,
+                                    address,
+                                    System.currentTimeMillis()
+                                )
+                            )
+                        )
                         webSocketSession.send(json)
                         val tunnelingSocket = tunnelingServer.get()
                         val clientConnection = socket.connection()
                         val tunnelingConnection = tunnelingSocket.connection()
                         val clientConnectionSocket = ConnectionSocket(clientConnection, tunnelingConnection)
                         val tunnelingConnectionSocket = ConnectionSocket(tunnelingConnection, clientConnection)
-                        connections[address] = (connections[address]?:mutableListOf()).apply { addAll(listOf(clientConnectionSocket, tunnelingConnectionSocket)) }
+                        connections[address] = (connections[address] ?: mutableListOf()).apply {
+                            addAll(
+                                listOf(
+                                    clientConnectionSocket,
+                                    tunnelingConnectionSocket
+                                )
+                            )
+                        }
                     }
                 }
-            } catch (_: ClosedChannelException) { }
+            } catch (_: ClosedChannelException) {
+            }
         }
     }
 
@@ -77,17 +105,30 @@ class TCPConnection(val user: String, var port: Int, val protocol: Protocol, fil
 
         runBlocking { webSocketSession.close() }
 
-        try { this.interrupt() } catch(_: Exception) {}
+        try {
+            this.interrupt()
+        } catch (_: Exception) {
+        }
     }
 
-    fun toConnectionInfo() = ConnectionInfo(user,port,protocol,filter,token)
+    fun toConnectionInfo() = ConnectionInfo(user, port, protocol, filter, token)
 
-    init { Data.CONNECTIONS[user] = (Data.CONNECTIONS[user]?: mutableMapOf()).also { it[token] = this } }
+    init {
+        Data.CONNECTIONS[user] = (Data.CONNECTIONS[user] ?: mutableMapOf()).also { it[token] = this }
+    }
 
     class ConnectionSocket(private val receive: Connection, private val send: Connection) : Thread() {
         fun close() {
-            try { receive.socket.close() } catch (e: Exception) { e.printStackTrace() }
-            try { send.socket.close() } catch (e: Exception) { e.printStackTrace() }
+            try {
+                receive.socket.close()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            try {
+                send.socket.close()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
 
         override fun run() {
@@ -108,8 +149,12 @@ class TCPConnection(val user: String, var port: Int, val protocol: Protocol, fil
             }
         }
 
-        init { this.start() }
+        init {
+            this.start()
+        }
     }
 
-    init { this.start() }
+    init {
+        this.start()
+    }
 }
