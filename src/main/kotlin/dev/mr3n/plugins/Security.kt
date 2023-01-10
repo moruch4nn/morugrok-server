@@ -79,25 +79,18 @@ fun Application.configureSecurity() {
 
                         null -> throw BadRequestException("プロトコルを指定してください。")
                     }
+
                     val subPort =
                         (Data.PORT_START..Data.PORT_END).toMutableList().apply { removeAll(Data.USING_PORT) }.random()
                     if (Data.USING_PORT.contains(body.port)) {
                         call.respond(HttpStatusCode.Conflict, "ポートが重複しているためコネクションを作成できませんでした。")
                     } else {
                         val waitConn = body.copy(
-                            user = principal.name, port = if (principal.hasPerm("port.select")) {
-                                body.port ?: throw BadRequestException("")
-                            } else {
-                                subPort
-                            }
+                            name = body.name,
+                            user = principal.name,
+                            port = if (principal.hasPerm("port.select")) { body.port ?: throw BadRequestException("") } else { subPort }
                         )
-                        Data.WAIT_CONNECTIONS[principal.name] =
-                            (Data.WAIT_CONNECTIONS[principal.name] ?: mutableMapOf()).apply {
-                                put(
-                                    waitConn.token,
-                                    waitConn
-                                )
-                            }
+                        Data.WAIT_CONNECTIONS[principal.name] = (Data.WAIT_CONNECTIONS[principal.name] ?: mutableMapOf()).apply { put(waitConn.token, waitConn) }
                         call.respond(HttpStatusCode.OK, waitConn)
                     }
                 }
@@ -159,6 +152,25 @@ fun Application.configureSecurity() {
                                     ?: throw NotFoundException("コネクションが見つかりません")
                                 call.respond(mapOf("port" to connection.tunnelingServer.port))
                             }
+                        }
+                    }
+                    route("name") {
+                        get {
+                            val principal = call.principal<JWTAuth>()!!
+                            val token = call.parameters["token"]
+                            val connection = Data.CONNECTIONS[principal.name]?.get(token)
+                                ?: throw NotFoundException("コネクションが見つかりません")
+                            call.respond(mapOf("name" to connection.name))
+                        }
+                        patch {
+                            val principal = call.principal<JWTAuth>()!!
+                            val token = call.parameters["token"]
+                            val connection = Data.CONNECTIONS[principal.name]?.get(token)?: throw NotFoundException("コネクションが見つかりません")
+                            val body = call.receive<ConnectionRequest>()
+                            if (body.name != connection.name) {
+                                connection.name = body.name
+                            }
+                            call.respond(mapOf("name" to connection.name))
                         }
                     }
                     route("port") {

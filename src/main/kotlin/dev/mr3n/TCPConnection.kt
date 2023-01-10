@@ -11,7 +11,6 @@ import io.ktor.network.sockets.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.engine.internal.*
 import io.ktor.utils.io.*
-import io.ktor.server.websocket.*
 import io.ktor.websocket.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -22,19 +21,50 @@ import java.net.InetSocketAddress
 import java.net.SocketException
 
 class TCPConnection(
+    var name: String?,
     val user: String,
     var port: Int,
     val protocol: Protocol,
     filter: Filter,
     private val token: String,
     private val webSocketSession: WebSocketSession
-) : Closeable, Thread() {
+) : Closeable {
     private val selectorManager = SelectorManager(Dispatchers.IO)
 
     private val serverSocket = aSocket(selectorManager).tcp().bind("0.0.0.0", port)
     private val connections = mutableMapOf<String, MutableList<ConnectionSocket>>()
 
     val tunnelingServer = TunnelingServer(selectorManager)
+
+    private val thread = Thread {
+        runBlocking {
+            try {
+                while (true) {
+                    val socket = serverSocket.accept()
+                    val address = (socket.remoteAddress.toJavaAddress() as InetSocketAddress).hostString
+                    val block = when (filter.type) {
+                        Filter.Type.BLACKLIST -> filter.list.contains(address)
+                        Filter.Type.WHITELIST -> !filter.list.contains(address)
+                    }
+                    if (block) {
+                        withContext(Dispatchers.IO) { socket.close() }
+                    } else {
+                        val json = DefaultJson.encodeToString(WebSocketPacket(PacketType.CREATE_TUNNEL, CreateTunnelRequest(tunnelingServer.port, Protocol.TCP, address, System.currentTimeMillis())))
+                        webSocketSession.send(json)
+                        val tunnelingSocket = tunnelingServer.get()
+                        val tunnelingConnection = tunnelingSocket.connection()
+                        val clientConnection = socket.connection()
+                        val tunnelingConnectionSocket = ConnectionSocket(tunnelingConnection, clientConnection)
+                        val clientConnectionSocket = ConnectionSocket(clientConnection, tunnelingConnection)
+                        connections[address] = (connections[address] ?: mutableListOf()).apply {
+                            addAll(listOf(clientConnectionSocket, tunnelingConnectionSocket))
+                        }
+                    }
+                }
+            } catch (_: ClosedChannelException) {
+            }
+        }
+    }
 
     var filter: Filter = filter
         set(value) {
@@ -50,52 +80,6 @@ class TCPConnection(
             field = value
         }
 
-
-    override fun run() {
-        runBlocking {
-            try {
-                while (true) {
-                    val socket = serverSocket.accept()
-                    val address = (socket.remoteAddress.toJavaAddress() as InetSocketAddress).hostString
-                    val block = when (filter.type) {
-                        Filter.Type.BLACKLIST -> filter.list.contains(address)
-                        Filter.Type.WHITELIST -> !filter.list.contains(address)
-                    }
-                    if (block) {
-                        withContext(Dispatchers.IO) { socket.close() }
-                    } else {
-                        val json = DefaultJson.encodeToString(
-                            WebSocketPacket(
-                                PacketType.CREATE_TUNNEL,
-                                CreateTunnelRequest(
-                                    tunnelingServer.port,
-                                    Protocol.TCP,
-                                    address,
-                                    System.currentTimeMillis()
-                                )
-                            )
-                        )
-                        webSocketSession.send(json)
-                        val tunnelingSocket = tunnelingServer.get()
-                        val clientConnection = socket.connection()
-                        val tunnelingConnection = tunnelingSocket.connection()
-                        val clientConnectionSocket = ConnectionSocket(clientConnection, tunnelingConnection)
-                        val tunnelingConnectionSocket = ConnectionSocket(tunnelingConnection, clientConnection)
-                        connections[address] = (connections[address] ?: mutableListOf()).apply {
-                            addAll(
-                                listOf(
-                                    clientConnectionSocket,
-                                    tunnelingConnectionSocket
-                                )
-                            )
-                        }
-                    }
-                }
-            } catch (_: ClosedChannelException) {
-            }
-        }
-    }
-
     override fun close() {
         Data.CONNECTIONS[user]?.remove(token)
 
@@ -105,19 +89,16 @@ class TCPConnection(
 
         runBlocking { webSocketSession.close() }
 
-        try {
-            this.interrupt()
-        } catch (_: Exception) {
-        }
+        try { thread.interrupt() } catch (_: Exception) { }
     }
 
-    fun toConnectionInfo() = ConnectionInfo(user, port, protocol, filter, token)
+    fun toConnectionInfo() = ConnectionInfo(name, user, port, protocol, filter, token)
 
     init {
         Data.CONNECTIONS[user] = (Data.CONNECTIONS[user] ?: mutableMapOf()).also { it[token] = this }
     }
 
-    class ConnectionSocket(private val receive: Connection, private val send: Connection) : Thread() {
+    class ConnectionSocket(private val receive: Connection, private val sendTo: Connection) : Thread() {
         fun close() {
             try {
                 receive.socket.close()
@@ -125,7 +106,7 @@ class TCPConnection(
                 e.printStackTrace()
             }
             try {
-                send.socket.close()
+                sendTo.socket.close()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -135,7 +116,7 @@ class TCPConnection(
             try {
                 runBlocking {
                     val inputStream = receive.input
-                    val outputStream = send.output
+                    val outputStream = sendTo.output
                     val buffer = ByteArray(Data.DEFAULT_BUFFER_SIZE)
                     while (true) {
                         val bytesRead: Int = inputStream.readAvailable(buffer)
@@ -155,6 +136,6 @@ class TCPConnection(
     }
 
     init {
-        this.start()
+        thread.start()
     }
 }
