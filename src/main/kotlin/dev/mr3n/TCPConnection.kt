@@ -27,7 +27,7 @@ class TCPConnection(
     val protocol: Protocol,
     filter: Filter,
     private val token: String,
-    private val webSocketSession: WebSocketSession
+    val webSocketSession: WebSocketSession
 ) : Closeable {
     private val selectorManager = SelectorManager(Dispatchers.IO)
 
@@ -81,7 +81,7 @@ class TCPConnection(
         }
 
     override fun close() {
-        Data.CONNECTIONS[user]?.remove(token)
+        CONNECTIONS[user]?.remove(token)
 
         serverSocket.close()
         tunnelingServer.close()
@@ -95,7 +95,7 @@ class TCPConnection(
     fun toConnectionInfo() = ConnectionInfo(name, user, port, protocol, filter, token)
 
     init {
-        Data.CONNECTIONS[user] = (Data.CONNECTIONS[user] ?: mutableMapOf()).also { it[token] = this }
+        CONNECTIONS[user] = (CONNECTIONS[user] ?: mutableMapOf()).also { it[token] = this }
     }
 
     class ConnectionSocket(private val receive: Connection, private val sendTo: Connection) : Thread() {
@@ -117,7 +117,7 @@ class TCPConnection(
                 runBlocking {
                     val inputStream = receive.input
                     val outputStream = sendTo.output
-                    val buffer = ByteArray(Data.DEFAULT_BUFFER_SIZE)
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                     while (true) {
                         val bytesRead: Int = inputStream.readAvailable(buffer)
                         if (bytesRead == -1) throw SocketException() // end

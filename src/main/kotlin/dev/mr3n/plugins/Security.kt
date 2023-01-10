@@ -2,7 +2,7 @@ package dev.mr3n.plugins
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
-import dev.mr3n.Data
+import dev.mr3n.*
 import dev.mr3n.model.ConnectionRequest
 import dev.mr3n.model.Protocol.*
 import dev.mr3n.model.auth.JWTAuth
@@ -81,8 +81,8 @@ fun Application.configureSecurity() {
                     }
 
                     val subPort =
-                        (Data.PORT_START..Data.PORT_END).toMutableList().apply { removeAll(Data.USING_PORT) }.random()
-                    if (Data.USING_PORT.contains(body.port)) {
+                        (PORT_START..PORT_END).toMutableList().apply { removeAll(USING_PORT) }.random()
+                    if (USING_PORT.contains(body.port)) {
                         call.respond(HttpStatusCode.Conflict, "ポートが重複しているためコネクションを作成できませんでした。")
                     } else {
                         val waitConn = body.copy(
@@ -90,18 +90,18 @@ fun Application.configureSecurity() {
                             user = principal.name,
                             port = if (principal.hasPerm("port.select")) { body.port ?: throw BadRequestException("") } else { subPort }
                         )
-                        Data.WAIT_CONNECTIONS[principal.name] = (Data.WAIT_CONNECTIONS[principal.name] ?: mutableMapOf()).apply { put(waitConn.token, waitConn) }
+                        WAIT_CONNECTIONS[principal.name] = (WAIT_CONNECTIONS[principal.name] ?: mutableMapOf()).apply { put(waitConn.token, waitConn) }
                         call.respond(HttpStatusCode.OK, waitConn)
                     }
                 }
                 get {
                     val principal = call.principal<JWTAuth>()!!
-                    val connections = Data.CONNECTIONS[principal.name]?.values ?: mutableListOf()
+                    val connections = CONNECTIONS[principal.name]?.values ?: mutableListOf()
                     call.respond(connections.map { it.toConnectionInfo() })
                 }
                 delete {
                     val principal = call.principal<JWTAuth>()!!
-                    Data.CONNECTIONS[principal.name]?.values?.forEach { it.close() }
+                    CONNECTIONS[principal.name]?.values?.forEach { it.close() }
                     call.respond("すべてのコネクションを停止しました。")
                 }
                 route("{token}") {
@@ -109,21 +109,21 @@ fun Application.configureSecurity() {
                         val principal = call.principal<JWTAuth>()!!
                         val token = call.parameters["token"]
                         val connection =
-                            Data.CONNECTIONS[principal.name]?.get(token) ?: throw NotFoundException("コネクションが見つかりません")
+                            CONNECTIONS[principal.name]?.get(token) ?: throw NotFoundException("コネクションが見つかりません")
                         connection.close()
                     }
                     get {
                         val principal = call.principal<JWTAuth>()!!
                         val token = call.parameters["token"]
                         val connection =
-                            Data.CONNECTIONS[principal.name]?.get(token) ?: throw NotFoundException("コネクションが見つかりません")
+                            CONNECTIONS[principal.name]?.get(token) ?: throw NotFoundException("コネクションが見つかりません")
                         call.respond(connection.toConnectionInfo())
                     }
                     patch {
                         val principal = call.principal<JWTAuth>()!!
                         val token = call.parameters["token"]
                         val connection =
-                            Data.CONNECTIONS[principal.name]?.get(token) ?: throw NotFoundException("コネクションが見つかりません")
+                            CONNECTIONS[principal.name]?.get(token) ?: throw NotFoundException("コネクションが見つかりません")
                         val body = call.receive<ConnectionRequest>()
                         if (body.protocol != null && body.protocol != connection.protocol) {
                             return@patch call.respond(HttpStatusCode.BadRequest, "プロトコル情報は変更できません。")
@@ -140,7 +140,7 @@ fun Application.configureSecurity() {
                         get {
                             val principal = call.principal<JWTAuth>()!!
                             val token = call.parameters["token"]
-                            val connection = Data.CONNECTIONS[principal.name]?.get(token)
+                            val connection = CONNECTIONS[principal.name]?.get(token)
                                 ?: throw NotFoundException("コネクションが見つかりません")
                             call.respond(mapOf("tunneling_server" to connection.tunnelingServer))
                         }
@@ -148,7 +148,7 @@ fun Application.configureSecurity() {
                             get {
                                 val principal = call.principal<JWTAuth>()!!
                                 val token = call.parameters["token"]
-                                val connection = Data.CONNECTIONS[principal.name]?.get(token)
+                                val connection = CONNECTIONS[principal.name]?.get(token)
                                     ?: throw NotFoundException("コネクションが見つかりません")
                                 call.respond(mapOf("port" to connection.tunnelingServer.port))
                             }
@@ -158,14 +158,14 @@ fun Application.configureSecurity() {
                         get {
                             val principal = call.principal<JWTAuth>()!!
                             val token = call.parameters["token"]
-                            val connection = Data.CONNECTIONS[principal.name]?.get(token)
+                            val connection = CONNECTIONS[principal.name]?.get(token)
                                 ?: throw NotFoundException("コネクションが見つかりません")
                             call.respond(mapOf("name" to connection.name))
                         }
                         patch {
                             val principal = call.principal<JWTAuth>()!!
                             val token = call.parameters["token"]
-                            val connection = Data.CONNECTIONS[principal.name]?.get(token)?: throw NotFoundException("コネクションが見つかりません")
+                            val connection = CONNECTIONS[principal.name]?.get(token)?: throw NotFoundException("コネクションが見つかりません")
                             val body = call.receive<ConnectionRequest>()
                             if (body.name != connection.name) {
                                 connection.name = body.name
@@ -177,7 +177,7 @@ fun Application.configureSecurity() {
                         get {
                             val principal = call.principal<JWTAuth>()!!
                             val token = call.parameters["token"]
-                            val connection = Data.CONNECTIONS[principal.name]?.get(token)
+                            val connection = CONNECTIONS[principal.name]?.get(token)
                                 ?: throw NotFoundException("コネクションが見つかりません")
                             call.respond(mapOf("port" to connection.port))
                         }
@@ -186,14 +186,14 @@ fun Application.configureSecurity() {
                         get {
                             val principal = call.principal<JWTAuth>()!!
                             val token = call.parameters["token"]
-                            val connection = Data.CONNECTIONS[principal.name]?.get(token)
+                            val connection = CONNECTIONS[principal.name]?.get(token)
                                 ?: throw NotFoundException("コネクションが見つかりません")
                             call.respond(mapOf("filter" to connection.filter))
                         }
                         patch {
                             val principal = call.principal<JWTAuth>()!!
                             val token = call.parameters["token"]
-                            val connection = Data.CONNECTIONS[principal.name]?.get(token)
+                            val connection = CONNECTIONS[principal.name]?.get(token)
                                 ?: throw NotFoundException("コネクションが見つかりません")
                             val body = call.receive<ConnectionRequest>()
                             if (body.filter != connection.filter) {
@@ -206,7 +206,7 @@ fun Application.configureSecurity() {
                         get {
                             val principal = call.principal<JWTAuth>()!!
                             val token = call.parameters["token"]
-                            val connection = Data.CONNECTIONS[principal.name]?.get(token)
+                            val connection = CONNECTIONS[principal.name]?.get(token)
                                 ?: throw NotFoundException("コネクションが見つかりません")
                             call.respond(mapOf("protocol" to connection.protocol))
                         }
@@ -215,7 +215,7 @@ fun Application.configureSecurity() {
                         get {
                             val principal = call.principal<JWTAuth>()!!
                             val token = call.parameters["token"]
-                            val connection = Data.CONNECTIONS[principal.name]?.get(token)
+                            val connection = CONNECTIONS[principal.name]?.get(token)
                                 ?: throw NotFoundException("コネクションが見つかりません")
                             call.respond(mapOf("user" to connection.user))
                         }
@@ -227,9 +227,9 @@ fun Application.configureSecurity() {
                     call.respond(
                         PortInfoResponse(
                             PortInfoResponse.PortInfo(
-                                Data.PORT_START,
-                                Data.PORT_END,
-                                Data.USING_PORT
+                                PORT_START,
+                                PORT_END,
+                                USING_PORT
                             )
                         )
                     )

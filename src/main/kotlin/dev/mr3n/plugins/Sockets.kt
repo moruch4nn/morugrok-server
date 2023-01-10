@@ -1,34 +1,50 @@
 package dev.mr3n.plugins
 
-import dev.mr3n.Data
+import dev.mr3n.CONNECTIONS
 import dev.mr3n.TCPConnection
+import dev.mr3n.TIMER
+import dev.mr3n.WAIT_CONNECTIONS
 import dev.mr3n.model.auth.WebSocketAuth
+import dev.mr3n.model.ws.PacketType
+import dev.mr3n.model.ws.WebSocketPacket
 import io.ktor.serialization.kotlinx.*
+import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.time.Duration
+import kotlin.concurrent.scheduleAtFixedRate
 
 fun Application.configureSockets() {
     install(WebSockets) {
-        pingPeriod = Duration.ofSeconds(20)
-        timeout = Duration.ofSeconds(30)
+        timeout = Duration.ofSeconds(120)
         maxFrameSize = Long.MAX_VALUE
         masking = false
         contentConverter = KotlinxWebsocketSerializationConverter(Json)
+    }
+
+    TIMER.scheduleAtFixedRate(1000 * 30L, 1000 * 30L) {
+        runBlocking {
+            CONNECTIONS.values.map { it.values }.flatten().forEach { con ->
+                val ping = DefaultJson.encodeToString(WebSocketPacket(PacketType.PING, null))
+                con.webSocketSession.send(ping)
+            }
+        }
     }
 
     routing {
         webSocket {
             val webSocketAuth = receiveDeserialized<WebSocketAuth>()
             val waitConnData =
-                Data.WAIT_CONNECTIONS[webSocketAuth.user]?.get(webSocketAuth.token) ?: return@webSocket close(
+                WAIT_CONNECTIONS[webSocketAuth.user]?.get(webSocketAuth.token) ?: return@webSocket close(
                     CloseReason(CloseReason.Codes.GOING_AWAY, "認証情報が無効です")
                 )
-            Data.WAIT_CONNECTIONS[webSocketAuth.user]?.remove(webSocketAuth.token)
+            WAIT_CONNECTIONS[webSocketAuth.user]?.remove(webSocketAuth.token)
             val tcpConn = TCPConnection(
                 waitConnData.name,
                 webSocketAuth.user,

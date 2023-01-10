@@ -6,7 +6,7 @@ import java.io.Closeable
 
 class TunnelingServer(selectorManager: SelectorManager) : Closeable {
 
-    val port = (Data.PORT_START..Data.PORT_END).toMutableList().apply { removeAll(Data.USING_PORT) }.random()
+    val port = (PORT_START..PORT_END).toMutableList().apply { removeAll(USING_PORT) }.random()
 
     val tunnelingSocket = aSocket(selectorManager).tcp().bind("0.0.0.0", port)
     suspend fun get(): Socket = tunnelingSocket.accept()
