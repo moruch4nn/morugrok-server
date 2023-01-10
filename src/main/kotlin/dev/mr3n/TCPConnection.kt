@@ -125,7 +125,7 @@ class TCPConnection(
                         outputStream.flush()
                     }
                 }
-            } catch (e: Exception) {
+            } finally {
                 this.close()
             }
         }
