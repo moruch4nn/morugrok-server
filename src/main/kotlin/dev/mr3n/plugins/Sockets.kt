@@ -5,6 +5,7 @@ import dev.mr3n.TCPConnection
 import dev.mr3n.TIMER
 import dev.mr3n.WAIT_CONNECTIONS
 import dev.mr3n.model.auth.WebSocketAuth
+import dev.mr3n.model.ws.EmptyPacket
 import dev.mr3n.model.ws.PacketType
 import dev.mr3n.model.ws.WebSocketPacket
 import io.ktor.serialization.kotlinx.*
@@ -28,10 +29,10 @@ fun Application.configureSockets() {
         contentConverter = KotlinxWebsocketSerializationConverter(Json)
     }
 
-    TIMER.scheduleAtFixedRate(1000 * 30L, 1000 * 30L) {
+    TIMER.scheduleAtFixedRate(1000 * 30, 1000 * 30) {
         runBlocking {
             CONNECTIONS.values.map { it.values }.flatten().forEach { con ->
-                val ping = DefaultJson.encodeToString(WebSocketPacket(PacketType.PING, null))
+                val ping = DefaultJson.encodeToString(EmptyPacket(PacketType.PING))
                 con.webSocketSession.send(ping)
             }
         }
