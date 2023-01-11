@@ -19,6 +19,8 @@ import kotlinx.serialization.encodeToString
 import java.io.Closeable
 import java.net.InetSocketAddress
 import java.net.SocketException
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CopyOnWriteArraySet
 
 class TCPConnection(
     var name: String?,
@@ -32,7 +34,7 @@ class TCPConnection(
     private val selectorManager = SelectorManager(Dispatchers.IO)
 
     private val serverSocket = aSocket(selectorManager).tcp().bind("0.0.0.0", port)
-    private val connections = mutableMapOf<String, MutableList<ConnectionSocket>>()
+    private val connections = CopyOnWriteArraySet<Triple<String, ConnectionSocket, ConnectionSocket>>()
 
     val tunnelingServer = TunnelingServer(selectorManager)
 
@@ -56,8 +58,15 @@ class TCPConnection(
                         val clientConnection = socket.connection()
                         val tunnelingConnectionSocket = ConnectionSocket(tunnelingConnection, clientConnection)
                         val clientConnectionSocket = ConnectionSocket(clientConnection, tunnelingConnection)
-                        connections[address] = (connections[address] ?: mutableListOf()).apply {
-                            addAll(listOf(clientConnectionSocket, tunnelingConnectionSocket))
+                        val con = Triple(address, tunnelingConnectionSocket, clientConnectionSocket)
+                        connections.add(con)
+                        tunnelingConnectionSocket.onEnd {
+                            tunnelingSocket.close()
+                            connections.remove(con)
+                        }
+                        clientConnectionSocket.onEnd {
+                            socket.close()
+                            connections.remove(con)
                         }
                     }
                 }
@@ -68,28 +77,29 @@ class TCPConnection(
 
     var filter: Filter = filter
         set(value) {
-            connections.forEach { (address, sockets) ->
+            connections.forEach { (address, socket1, socket2) ->
                 val block = when (value.type) {
                     Filter.Type.BLACKLIST -> value.list.contains(address)
                     Filter.Type.WHITELIST -> !value.list.contains(address)
                 }
                 if (block) {
-                    sockets.forEach { it.close() }
+                    socket1.close()
+                    socket2.close()
                 }
             }
             field = value
         }
 
     override fun close() {
-        CONNECTIONS[user]?.remove(token)
+        try { serverSocket.close() } catch(_: Exception) {}
+        try { tunnelingServer.close() } catch(_: Exception) {}
+        try { selectorManager.close() } catch(_: Exception) {}
 
-        serverSocket.close()
-        tunnelingServer.close()
-        selectorManager.close()
-
-        runBlocking { webSocketSession.close() }
+        try { runBlocking { webSocketSession.close() } } catch(_: Exception) {}
 
         try { thread.interrupt() } catch (_: Exception) { }
+
+        CONNECTIONS[user]?.remove(token)
     }
 
     fun toConnectionInfo() = ConnectionInfo(name, user, port, protocol, filter, token)
@@ -99,17 +109,15 @@ class TCPConnection(
     }
 
     class ConnectionSocket(private val receive: Connection, private val sendTo: Connection) : Thread() {
+
+        private val endRunnable = mutableListOf<()->Unit>()
+
+        fun onEnd(runnable: ()->Unit) { endRunnable.add(runnable) }
+
         fun close() {
-            try {
-                receive.socket.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            try {
-                sendTo.socket.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            endRunnable.forEach { it.invoke() }
+            try { receive.socket.close() } catch (e: Exception) { e.printStackTrace() }
+            try { sendTo.socket.close() } catch (e: Exception) { e.printStackTrace() }
         }
 
         override fun run() {
@@ -125,6 +133,8 @@ class TCPConnection(
                         outputStream.flush()
                     }
                 }
+            } catch(_: Exception) {
+
             } finally {
                 this.close()
             }

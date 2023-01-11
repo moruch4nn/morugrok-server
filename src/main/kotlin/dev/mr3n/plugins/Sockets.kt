@@ -23,19 +23,11 @@ import kotlin.concurrent.scheduleAtFixedRate
 
 fun Application.configureSockets() {
     install(WebSockets) {
-        timeout = Duration.ofSeconds(120)
+        timeout = Duration.ofSeconds(15)
+        pingPeriod = Duration.ofSeconds(15)
         maxFrameSize = Long.MAX_VALUE
         masking = false
         contentConverter = KotlinxWebsocketSerializationConverter(Json)
-    }
-
-    TIMER.scheduleAtFixedRate(1000 * 30, 1000 * 30) {
-        runBlocking {
-            CONNECTIONS.values.map { it.values }.flatten().forEach { con ->
-                val ping = DefaultJson.encodeToString(EmptyPacket(PacketType.PING))
-                con.webSocketSession.send(ping)
-            }
-        }
     }
 
     routing {
