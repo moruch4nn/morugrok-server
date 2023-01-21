@@ -80,8 +80,7 @@ fun Application.configureSecurity() {
                         null -> throw BadRequestException("プロトコルを指定してください。")
                     }
 
-                    val subPort =
-                        (PORT_START..PORT_END).toMutableList().apply { removeAll(USING_PORT) }.random()
+                    val subPort = (PORT_START..PORT_END).toMutableList().apply { removeAll(USING_PORT) }.random()
                     if (USING_PORT.contains(body.port)) {
                         call.respond(HttpStatusCode.Conflict, "ポートが重複しているためコネクションを作成できませんでした。")
                     } else {
@@ -122,18 +121,17 @@ fun Application.configureSecurity() {
                     patch {
                         val principal = call.principal<JWTAuth>()!!
                         val token = call.parameters["token"]
-                        val connection =
-                            CONNECTIONS[principal.name]?.get(token) ?: throw NotFoundException("コネクションが見つかりません")
+                        val connection = CONNECTIONS[principal.name]?.get(token) ?: throw NotFoundException("コネクションが見つかりません")
                         val body = call.receive<ConnectionRequest>()
-                        if (body.protocol != null && body.protocol != connection.protocol) {
-                            return@patch call.respond(HttpStatusCode.BadRequest, "プロトコル情報は変更できません。")
-                        }
+                        if (body.protocol != null && body.protocol != connection.protocol) { return@patch call.respond(HttpStatusCode.BadRequest, "プロトコル情報は変更できません。") }
                         if (body.port != null && body.port != connection.port) {
+                            if(USING_PORT.contains(body.port)) {
+                                return@patch call.respond(HttpStatusCode.BadRequest, "既にポート${body.port}は別のコネクションに使用されています。")
+                            }
                             connection.port = body.port
                         }
-                        if (body.filter != connection.filter) {
-                            connection.filter = body.filter
-                        }
+                        if (body.name != null && body.name != connection.name) { connection.name = body.name }
+                        if (body.filter != connection.filter) { connection.filter = body.filter }
                         call.respond(connection.toConnectionInfo())
                     }
                     route("tunneling_server") {
@@ -167,9 +165,7 @@ fun Application.configureSecurity() {
                             val token = call.parameters["token"]
                             val connection = CONNECTIONS[principal.name]?.get(token)?: throw NotFoundException("コネクションが見つかりません")
                             val body = call.receive<ConnectionRequest>()
-                            if (body.name != connection.name) {
-                                connection.name = body.name
-                            }
+                            if (body.name != connection.name) { connection.name = body.name }
                             call.respond(mapOf("name" to connection.name))
                         }
                     }
@@ -180,6 +176,17 @@ fun Application.configureSecurity() {
                             val connection = CONNECTIONS[principal.name]?.get(token)
                                 ?: throw NotFoundException("コネクションが見つかりません")
                             call.respond(mapOf("port" to connection.port))
+                        }
+                        patch {
+                            val principal = call.principal<JWTAuth>()!!
+                            val token = call.parameters["token"]
+                            val connection = CONNECTIONS[principal.name]?.get(token)?: throw NotFoundException("コネクションが見つかりません")
+                            val body = call.receive<ConnectionRequest>()
+                            if (body.port != null && body.port != connection.port) {
+                                if(USING_PORT.contains(body.port)) { return@patch call.respond(HttpStatusCode.BadRequest, "既にポート${body.port}は別のコネクションに使用されています。") }
+                                connection.port = body.port
+                            }
+                            call.respond(mapOf("port" to body.port))
                         }
                     }
                     route("filter") {
@@ -193,8 +200,7 @@ fun Application.configureSecurity() {
                         patch {
                             val principal = call.principal<JWTAuth>()!!
                             val token = call.parameters["token"]
-                            val connection = CONNECTIONS[principal.name]?.get(token)
-                                ?: throw NotFoundException("コネクションが見つかりません")
+                            val connection = CONNECTIONS[principal.name]?.get(token)?: throw NotFoundException("コネクションが見つかりません")
                             val body = call.receive<ConnectionRequest>()
                             if (body.filter != connection.filter) {
                                 connection.filter = body.filter

@@ -4,6 +4,10 @@ import io.ktor.network.selector.*
 import io.ktor.network.sockets.*
 import java.io.Closeable
 
+/**
+ * ユーザーごとに新しく作成されるTCPコネクションです。
+ * このコネクションは morugrokサーバー<->サーバーホスト 間を繋いでいます。
+ */
 class TunnelingServer(selectorManager: SelectorManager) : Closeable {
 
     val port = (PORT_START..PORT_END).toMutableList().apply { removeAll(USING_PORT) }.random()
@@ -12,9 +16,6 @@ class TunnelingServer(selectorManager: SelectorManager) : Closeable {
     suspend fun get(): Socket = tunnelingSocket.accept()
 
     override fun close() {
-        try {
-            tunnelingSocket.close()
-        } catch (_: Exception) {
-        }
+        try { tunnelingSocket.close() } catch (_: Exception) { }
     }
 }

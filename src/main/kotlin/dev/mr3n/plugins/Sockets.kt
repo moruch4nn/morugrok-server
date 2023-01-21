@@ -1,30 +1,21 @@
 package dev.mr3n.plugins
 
-import dev.mr3n.CONNECTIONS
 import dev.mr3n.TCPConnection
-import dev.mr3n.TIMER
 import dev.mr3n.WAIT_CONNECTIONS
 import dev.mr3n.model.auth.WebSocketAuth
-import dev.mr3n.model.ws.EmptyPacket
-import dev.mr3n.model.ws.PacketType
-import dev.mr3n.model.ws.WebSocketPacket
 import io.ktor.serialization.kotlinx.*
-import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
-import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.time.Duration
-import kotlin.concurrent.scheduleAtFixedRate
 
 fun Application.configureSockets() {
     install(WebSockets) {
-        timeout = Duration.ofSeconds(15)
-        pingPeriod = Duration.ofSeconds(15)
+        timeout = Duration.ofSeconds(10)
+        pingPeriod = Duration.ofSeconds(5)
         maxFrameSize = Long.MAX_VALUE
         masking = false
         contentConverter = KotlinxWebsocketSerializationConverter(Json)
