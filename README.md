@@ -5,7 +5,7 @@
 
 特にデータ保存機能などもないのでJWTTokenのSECRETの設定のみで動作します。
 
-※JWTTokenの自動生成機能はないため各自で設定してください。<br>
+※JWTTokenの自動生成機能はないため各自で[生成](https://jwt.io/)してください。<br>
 詳細
 ```
 Algorithm: HS512
